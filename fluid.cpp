@@ -3,6 +3,7 @@
 #include <math.h>
 #include <numeric>
 #include <sstream>
+#include "mpi_navier.h"
 // Global constants in the equations are
 double rkold[3];
 int nx1;
@@ -33,7 +34,8 @@ int itercount;
 double bandwidth;
 double Count;
 double giga = pow(2,30);
-std::stringstream report;
+//std::stringstream report;
+
 // main program start
 int main(int argc, char **argv) {
 std::chrono::time_point<std::chrono::system_clock> start, end;
@@ -46,6 +48,9 @@ std::chrono::duration<double> elapsed_seconds;
   nx1 = 257;
   if (argc > 2)
     nx1 = atoi(argv[2]);
+
+  mpi_setup(argc, argv, &nx0, &nx1);
+
   gama = 1.40000000000000;
   Pr = 0.710000000000000;
   Re = 1600;
@@ -76,8 +81,7 @@ std::chrono::duration<double> elapsed_seconds;
   itercount = 20;
  
   
-  report << "Running on a " << nx0 + 4 << "x" << nx1 + 4 << " mesh for "
-            << itercount << " iterations\n";
+  //report << "Running on a " << nx0 + 4 << "x" << nx1 + 4 << " mesh for " << itercount << " iterations\n";
 
   // Allocating mesh
   double *rho = new double[(nx0 + 4) * (nx1 + 4)];
@@ -97,15 +101,24 @@ std::chrono::duration<double> elapsed_seconds;
   double *wk2 = new double[(nx0 + 4) * (nx1 + 4)];
   double *wk3 = new double[(nx0 + 4) * (nx1 + 4)];
     
-  report << "Name" << "\t" << "Elapsed time (s)" << "\t" << "Execution count" << "\t" << "Achieved bandwidth (GB/s)" << "\n";
-    
+  //report << "Name" << "\t" << "Elapsed time (s)" << "\t" << "Execution count" << "\t" << "Achieved bandwidth (GB/s)" << "\n";
+
+  dat_ptrs[0] = rho;
+  dat_ptrs[1] = rhou0;
+  dat_ptrs[2] = rhou1;
+  dat_ptrs[3] = rhoE;
+  dat_ptrs[4] = T;
+  dat_ptrs[5] = u0;
+  dat_ptrs[6] = u1;
+  dat_ptrs[7] = p;
+  
   // Initialisation
   // writing dataset rho with (i,j) access
   // writing dataset rhou0 with (i,j) access
   // writing dataset rhou1 with (i,j) access
   // wirting dataset rhoE with (i,j) access
   start = std::chrono::system_clock::now();
-  #pragma omp parallel for collapse(2)
+  
   for (int j = 0; j < nx1 + 4; j++) {
     for (int i = 0; i < nx0 + 4; i++) {
       double x = deltai0 * (i - 2);
@@ -126,7 +139,7 @@ std::chrono::duration<double> elapsed_seconds;
   Count = (nx1 + 4)*(nx0 + 4);
   bandwidth = sizeof(double) * 4 * Count * (1/elapsed_seconds.count()) / giga;
 
-  report << "Initialisation" << "\t" << elapsed_seconds.count() << "\t" << Count << " \t" << bandwidth << " \n";
+  //report << "Initialisation" << "\t" << elapsed_seconds.count() << "\t" << Count << " \t" << bandwidth << " \n";
     
 
   // Apply boundary conditions
@@ -140,29 +153,31 @@ std::chrono::duration<double> elapsed_seconds;
   // reading dataset rhou1 with (i+1,j), (i+2,j) access
   // reading dataset rhoE with (i+1,j), (i+2,j) access
   start = std::chrono::system_clock::now();
-  #pragma omp parallel for collapse(2)
+  //this loop only done by processes who have no previous neighbour in the x direction
+  if (prev_x == MPI_PROC_NULL) {
     for (int j = 0; j < nx1 + 4; j++) {
-    for (int i = 2; i < 3; i++) {
-      rho[(j + 0) * (nx0 + 4) + (i - 1)] = rho[(j + 0) * (nx0 + 4) + (i + 1)];
-      rho[(j + 0) * (nx0 + 4) + (i - 2)] = rho[(j + 0) * (nx0 + 4) + (i + 2)];
-      rhou0[(j + 0) * (nx0 + 4) + (i - 1)] =
-          rhou0[(j + 0) * (nx0 + 4) + (i + 1)];
-      rhou0[(j + 0) * (nx0 + 4) + (i - 2)] =
-          rhou0[(j + 0) * (nx0 + 4) + (i + 2)];
-      rhou1[(j + 0) * (nx0 + 4) + (i - 1)] =
-          rhou1[(j + 0) * (nx0 + 4) + (i + 1)];
-      rhou1[(j + 0) * (nx0 + 4) + (i - 2)] =
-          rhou1[(j + 0) * (nx0 + 4) + (i + 2)];
-      rhoE[(j + 0) * (nx0 + 4) + (i - 1)] = rhoE[(j + 0) * (nx0 + 4) + (i + 1)];
-      rhoE[(j + 0) * (nx0 + 4) + (i - 2)] = rhoE[(j + 0) * (nx0 + 4) + (i + 2)];
+      for (int i = 2; i < 3; i++) {
+        rho[(j + 0) * (nx0 + 4) + (i - 1)] = rho[(j + 0) * (nx0 + 4) + (i + 1)];
+        rho[(j + 0) * (nx0 + 4) + (i - 2)] = rho[(j + 0) * (nx0 + 4) + (i + 2)];
+        rhou0[(j + 0) * (nx0 + 4) + (i - 1)] =
+            rhou0[(j + 0) * (nx0 + 4) + (i + 1)];
+        rhou0[(j + 0) * (nx0 + 4) + (i - 2)] =
+            rhou0[(j + 0) * (nx0 + 4) + (i + 2)];
+        rhou1[(j + 0) * (nx0 + 4) + (i - 1)] =
+            rhou1[(j + 0) * (nx0 + 4) + (i + 1)];
+        rhou1[(j + 0) * (nx0 + 4) + (i - 2)] =
+            rhou1[(j + 0) * (nx0 + 4) + (i + 2)];
+        rhoE[(j + 0) * (nx0 + 4) + (i - 1)] = rhoE[(j + 0) * (nx0 + 4) + (i + 1)];
+        rhoE[(j + 0) * (nx0 + 4) + (i - 2)] = rhoE[(j + 0) * (nx0 + 4) + (i + 2)];
+      }
     }
   }
-    end = std::chrono::system_clock::now();
-    elapsed_seconds = end-start;
-    Count = (nx1 + 4)*(3-2);
-    bandwidth = sizeof(double) * 4 * Count * (1/elapsed_seconds.count()) / giga;
+    //end = std::chrono::system_clock::now();
+    //elapsed_seconds = end-start;
+    //Count = (nx1 + 4)*(3-2);
+    //bandwidth = sizeof(double) * 4 * Count * (1/elapsed_seconds.count()) / giga;
     
-    report << "ABC Left" << "\t" << elapsed_seconds.count() << "\t" << Count << " \t" << bandwidth << " \n";
+    //report << "ABC Left" << "\t" << elapsed_seconds.count() << "\t" << Count << " \t" << bandwidth << " \n";
 
   // Right
   // writing dataset rho with (i+1,j), (i+2,j) access
@@ -173,30 +188,33 @@ std::chrono::duration<double> elapsed_seconds;
   // reading dataset rhou0 with (i-1,j), (i-2,j) access
   // reading dataset rhou1 with (i-1,j), (i-2,j) access
   // reading dataset rhoE with (i-1,j), (i-2,j) access
-    start = std::chrono::system_clock::now();
-  #pragma omp parallel for collapse(2)
+    //start = std::chrono::system_clock::now();
+
+  //this loop should only done by processes who have no next neighbour in the x direction
+  if (next_x == MPI_PROC_NULL) {
     for (int j = 0; j < nx1 + 4; j++) {
-    for (int i = nx0 + 1; i < nx0 + 2; i++) {
-      rho[(j + 0) * (nx0 + 4) + (i + 1)] = rho[(j + 0) * (nx0 + 4) + (i - 1)];
-      rho[(j + 0) * (nx0 + 4) + (i + 2)] = rho[(j + 0) * (nx0 + 4) + (i - 2)];
-      rhou0[(j + 0) * (nx0 + 4) + (i + 1)] =
-          rhou0[(j + 0) * (nx0 + 4) + (i - 1)];
-      rhou0[(j + 0) * (nx0 + 4) + (i + 2)] =
-          rhou0[(j + 0) * (nx0 + 4) + (i - 2)];
-      rhou1[(j + 0) * (nx0 + 4) + (i + 1)] =
-          rhou1[(j + 0) * (nx0 + 4) + (i - 1)];
-      rhou1[(j + 0) * (nx0 + 4) + (i + 2)] =
-          rhou1[(j + 0) * (nx0 + 4) + (i - 2)];
-      rhoE[(j + 0) * (nx0 + 4) + (i + 1)] = rhoE[(j + 0) * (nx0 + 4) + (i - 1)];
-      rhoE[(j + 0) * (nx0 + 4) + (i + 2)] = rhoE[(j + 0) * (nx0 + 4) + (i - 2)];
+      for (int i = nx0 + 1; i < nx0 + 2; i++) {
+        rho[(j + 0) * (nx0 + 4) + (i + 1)] = rho[(j + 0) * (nx0 + 4) + (i - 1)];
+        rho[(j + 0) * (nx0 + 4) + (i + 2)] = rho[(j + 0) * (nx0 + 4) + (i - 2)];
+        rhou0[(j + 0) * (nx0 + 4) + (i + 1)] =
+            rhou0[(j + 0) * (nx0 + 4) + (i - 1)];
+        rhou0[(j + 0) * (nx0 + 4) + (i + 2)] =
+            rhou0[(j + 0) * (nx0 + 4) + (i - 2)];
+        rhou1[(j + 0) * (nx0 + 4) + (i + 1)] =
+            rhou1[(j + 0) * (nx0 + 4) + (i - 1)];
+        rhou1[(j + 0) * (nx0 + 4) + (i + 2)] =
+            rhou1[(j + 0) * (nx0 + 4) + (i - 2)];
+        rhoE[(j + 0) * (nx0 + 4) + (i + 1)] = rhoE[(j + 0) * (nx0 + 4) + (i - 1)];
+        rhoE[(j + 0) * (nx0 + 4) + (i + 2)] = rhoE[(j + 0) * (nx0 + 4) + (i - 2)];
+      }
     }
   }
-    end = std::chrono::system_clock::now();
-    elapsed_seconds = end-start;
-    Count = (nx1 + 4)*(nx0 + 2-(nx0 + 1));
-    bandwidth = sizeof(double) * 4 * Count * (1/elapsed_seconds.count()) / giga;
+    //end = std::chrono::system_clock::now();
+    //elapsed_seconds = end-start;
+    //Count = (nx1 + 4)*(nx0 + 2-(nx0 + 1));
+    //bandwidth = sizeof(double) * 4 * Count * (1/elapsed_seconds.count()) / giga;
     
-    report << "ABC Right" << "\t" << elapsed_seconds.count() << "\t" << Count << " \t" << bandwidth << " \n";
+    //report << "ABC Right" << "\t" << elapsed_seconds.count() << "\t" << Count << " \t" << bandwidth << " \n";
 
 
   // Top
@@ -208,30 +226,33 @@ std::chrono::duration<double> elapsed_seconds;
   // reading dataset rhou0 with (i,j+1), (i,j+2) access
   // reading dataset rhou1 with (i,j+1), (i,j+2) access
   // reading dataset rhoE with (i,j+1), (i,j+2) access
-    start = std::chrono::system_clock::now();
-  #pragma omp parallel for collapse(2)
+//    start = std::chrono::system_clock::now();
+  
+  // this loop should only done by processes who have no previous neighbour in the y direction
+  if (prev_y == MPI_PROC_NULL) {
     for (int j = 2; j < 3; j++) {
-    for (int i = 0; i < nx0 + 4; i++) {
-      rho[(j - 1) * (nx0 + 4) + (i + 0)] = rho[(j + 1) * (nx0 + 4) + (i + 0)];
-      rho[(j - 2) * (nx0 + 4) + (i + 0)] = rho[(j + 2) * (nx0 + 4) + (i + 0)];
-      rhou0[(j - 1) * (nx0 + 4) + (i + 0)] =
-          rhou0[(j + 1) * (nx0 + 4) + (i + 0)];
-      rhou0[(j - 2) * (nx0 + 4) + (i + 0)] =
-          rhou0[(j + 2) * (nx0 + 4) + (i + 0)];
-      rhou1[(j - 1) * (nx0 + 4) + (i + 0)] =
-          rhou1[(j + 1) * (nx0 + 4) + (i + 0)];
-      rhou1[(j - 2) * (nx0 + 4) + (i + 0)] =
-          rhou1[(j + 2) * (nx0 + 4) + (i + 0)];
-      rhoE[(j - 1) * (nx0 + 4) + (i + 0)] = rhoE[(j + 1) * (nx0 + 4) + (i + 0)];
-      rhoE[(j - 2) * (nx0 + 4) + (i + 0)] = rhoE[(j + 2) * (nx0 + 4) + (i + 0)];
+      for (int i = 0; i < nx0 + 4; i++) {
+        rho[(j - 1) * (nx0 + 4) + (i + 0)] = rho[(j + 1) * (nx0 + 4) + (i + 0)];
+        rho[(j - 2) * (nx0 + 4) + (i + 0)] = rho[(j + 2) * (nx0 + 4) + (i + 0)];
+        rhou0[(j - 1) * (nx0 + 4) + (i + 0)] =
+            rhou0[(j + 1) * (nx0 + 4) + (i + 0)];
+        rhou0[(j - 2) * (nx0 + 4) + (i + 0)] =
+            rhou0[(j + 2) * (nx0 + 4) + (i + 0)];
+        rhou1[(j - 1) * (nx0 + 4) + (i + 0)] =
+            rhou1[(j + 1) * (nx0 + 4) + (i + 0)];
+        rhou1[(j - 2) * (nx0 + 4) + (i + 0)] =
+            rhou1[(j + 2) * (nx0 + 4) + (i + 0)];
+        rhoE[(j - 1) * (nx0 + 4) + (i + 0)] = rhoE[(j + 1) * (nx0 + 4) + (i + 0)];
+        rhoE[(j - 2) * (nx0 + 4) + (i + 0)] = rhoE[(j + 2) * (nx0 + 4) + (i + 0)];
+      }
     }
   }
-    end = std::chrono::system_clock::now();
-    elapsed_seconds = end-start;
-    Count = (3-2)*(nx0 + 4);
-    bandwidth = sizeof(double) * 4 * Count * (1/elapsed_seconds.count()) / giga;
+  //  end = std::chrono::system_clock::now();
+  //  elapsed_seconds = end-start;
+  //  Count = (3-2)*(nx0 + 4);
+  //  bandwidth = sizeof(double) * 4 * Count * (1/elapsed_seconds.count()) / giga;
     
-    report << "ABC Top" << "\t" << elapsed_seconds.count() << "\t" << Count << " \t" << bandwidth << " \n";
+  //  report << "ABC Top" << "\t" << elapsed_seconds.count() << "\t" << Count << " \t" << bandwidth << " \n";
 
 
   // Bottom
@@ -243,38 +264,51 @@ std::chrono::duration<double> elapsed_seconds;
   // reading dataset rhou0 with (i,j-1), (i,j-2) access
   // reading dataset rhou1 with (i,j-1), (i,j-2) access
   // reading dataset rhoE with (i,j-1), (i,j-2) access
-    start = std::chrono::system_clock::now();
-  #pragma omp parallel for collapse(2)
-  for (int j = nx1 + 1; j < nx1 + 2; j++) {
-    for (int i = 0; i < nx0 + 4; i++) {
-      rho[(j + 1) * (nx0 + 4) + (i + 0)] = rho[(j - 1) * (nx0 + 4) + (i + 0)];
-      rho[(j + 2) * (nx0 + 4) + (i + 0)] = rho[(j - 2) * (nx0 + 4) + (i + 0)];
-      rhou0[(j + 1) * (nx0 + 4) + (i + 0)] =
-          rhou0[(j - 1) * (nx0 + 4) + (i + 0)];
-      rhou0[(j + 2) * (nx0 + 4) + (i + 0)] =
-          rhou0[(j - 2) * (nx0 + 4) + (i + 0)];
-      rhou1[(j + 1) * (nx0 + 4) + (i + 0)] =
-          rhou1[(j - 1) * (nx0 + 4) + (i + 0)];
-      rhou1[(j + 2) * (nx0 + 4) + (i + 0)] =
-          rhou1[(j - 2) * (nx0 + 4) + (i + 0)];
-      rhoE[(j + 1) * (nx0 + 4) + (i + 0)] = rhoE[(j - 1) * (nx0 + 4) + (i + 0)];
-      rhoE[(j + 2) * (nx0 + 4) + (i + 0)] = rhoE[(j - 2) * (nx0 + 4) + (i + 0)];
+    //start = std::chrono::system_clock::now();
+  
+  // this loop should only done by processes who have no next neighbour in the y direction	  
+  if (next_y == MPI_PROC_NULL) {
+    for (int j = nx1 + 1; j < nx1 + 2; j++) {
+      for (int i = 0; i < nx0 + 4; i++) {
+        rho[(j + 1) * (nx0 + 4) + (i + 0)] = rho[(j - 1) * (nx0 + 4) + (i + 0)];
+        rho[(j + 2) * (nx0 + 4) + (i + 0)] = rho[(j - 2) * (nx0 + 4) + (i + 0)];
+        rhou0[(j + 1) * (nx0 + 4) + (i + 0)] =
+            rhou0[(j - 1) * (nx0 + 4) + (i + 0)];
+        rhou0[(j + 2) * (nx0 + 4) + (i + 0)] =
+            rhou0[(j - 2) * (nx0 + 4) + (i + 0)];
+        rhou1[(j + 1) * (nx0 + 4) + (i + 0)] =
+            rhou1[(j - 1) * (nx0 + 4) + (i + 0)];
+        rhou1[(j + 2) * (nx0 + 4) + (i + 0)] =
+            rhou1[(j - 2) * (nx0 + 4) + (i + 0)];
+        rhoE[(j + 1) * (nx0 + 4) + (i + 0)] = rhoE[(j - 1) * (nx0 + 4) + (i + 0)];
+        rhoE[(j + 2) * (nx0 + 4) + (i + 0)] = rhoE[(j - 2) * (nx0 + 4) + (i + 0)];
+      }
     }
   }
-    end = std::chrono::system_clock::now();
-    elapsed_seconds = end-start;
-    Count = (nx1 + 2 -(nx1 + 1))*(nx0 + 4);
-    bandwidth = sizeof(double) * 4 * Count * (1/elapsed_seconds.count()) / giga;
+    //end = std::chrono::system_clock::now();
+    //elapsed_seconds = end-start;
+    //Count = (nx1 + 2 -(nx1 + 1))*(nx0 + 4);
+    //bandwidth = sizeof(double) * 4 * Count * (1/elapsed_seconds.count()) / giga;
     
-    report << "ABC Bottom" << "\t" << elapsed_seconds.count() << "\t" << Count << " \t" << bandwidth << " \n";
-
+    //report << "ABC Bottom" << "\t" << elapsed_seconds.count() << "\t" << Count << " \t" << bandwidth << " \n";
+  
+  // Flag dirty the 4 arrays which has been written
+  set_dirty(rho);
+  set_dirty(rhou0);
+  set_dirty(rhou1);
+  set_dirty(rhoE);
 
   // Record start time
   auto startMain = std::chrono::high_resolution_clock::now();
 
   // Main time iteration loop
   for (int iteration = 0; iteration < itercount; iteration++) {
-
+    //need to make sure stencil accesses to rho, rhou0, rhou1, rhoE read correct data  
+    exchange_halo(nx0, nx1, rho);
+    exchange_halo(nx0, nx1, rhou0);
+    exchange_halo(nx0, nx1, rhou1);
+    exchange_halo(nx0, nx1, rhoE);
+    
     // Save equations
     // writing dataset rho_old with (i,j) access
     // writing dataset rhou0_old with (i,j) access
@@ -284,8 +318,7 @@ std::chrono::duration<double> elapsed_seconds;
     // reading dataset rhou0 with (i,j) access
     // reading dataset rhou1 with (i,j) access
     // reading dataset rhoE with (i,j) access
-      if(iteration==0) start = std::chrono::system_clock::now();
-  #pragma omp parallel for collapse(2)
+//      if(iteration==0) start = std::chrono::system_clock::now();
     for (int j = 0; j < nx1 + 4; j++) {
       for (int i = 0; i < nx0 + 4; i++) {
         rho_old[(j + 0) * (nx0 + 4) + (i + 0)] =
@@ -298,14 +331,14 @@ std::chrono::duration<double> elapsed_seconds;
             rhoE[(j + 0) * (nx0 + 4) + (i + 0)];
       }
     }
-      if(iteration==0) {
+      /*if(iteration==0) {
           end = std::chrono::system_clock::now();
           elapsed_seconds = end-start;
           Count = (nx0 + 4)*(nx0 + 4);
           bandwidth = sizeof(double) * 8 * Count * (1/elapsed_seconds.count()) / giga;
           
           report << "Save equations" << "\t" << elapsed_seconds.count() << "\t" << Count << " \t" << bandwidth << " \n";
-      }
+      }*/
     // Runge-Kutta time-stepper
     for (int stage = 0; stage < 3; stage++) {
 
@@ -343,7 +376,7 @@ std::chrono::duration<double> elapsed_seconds;
               rho[(j + 0) * (nx0 + 4) + (i + 0)];
         }
       }
-        if(iteration==0 && stage == 0) {
+       /* if(iteration==0 && stage == 0) {
             end = std::chrono::system_clock::now();
             elapsed_seconds = end-start;
             Count = (nx1 + 4)*(nx0 + 4);
@@ -351,7 +384,19 @@ std::chrono::duration<double> elapsed_seconds;
             
             report << "Grouped Formula Evaluation" << "\t" << elapsed_seconds.count() << "\t" << Count << " \t" << bandwidth << " \n";
             
-        }
+        }*/
+
+      // Flag dirty the 4 arrays which has been written
+      set_dirty(T);
+      set_dirty(p);
+      set_dirty(u0);
+      set_dirty(u1);
+      
+      // Need to make sure stencil accesses to T,p,u0,u1 read correct data
+      exchange_halo(nx0, nx1, T);
+      exchange_halo(nx0, nx1, p);
+      exchange_halo(nx0, nx1, u0);
+      exchange_halo(nx0, nx1, u1);
 
       // Residual of equation
       // writing dataset wk0 with (i,j) access
@@ -370,8 +415,7 @@ std::chrono::duration<double> elapsed_seconds;
       // reading dataset u0 with (i,j),(i-2,j),(i-1,j),(i+1,j),(i+2,j),(i,j-2),(i,j-1),(i,j+1),(i,j+2),
       // (i-2,j-2),(i-1,j-2),(i+1,j-2),(i+2,j-2),(i-2,j-1),(i-1,j-1),(i+1,j-1),(i+2,j-1),(i-2,j+1),(i-1,j+1),
       // (i+1,j+1),(i+2,j+1),(i-2,j+2),(i-1,j+2),(i+1,j+2),(i+2,j+2) access
-        start = std::chrono::system_clock::now();
-      #pragma omp parallel for collapse(2)
+        //start = std::chrono::system_clock::now();
       for (int j = 2; j < nx1 + 2; j++) {
         for (int i = 2; i < nx0 + 2; i++) {
           double temp_eval0 =
@@ -645,15 +689,15 @@ std::chrono::duration<double> elapsed_seconds;
                   rhoE[(j + 0) * (nx0 + 4) + (i + 0)];
         }
       }
-        if(iteration==0 && stage == 0) {
+      /*  if(iteration==0 && stage == 0) {
             end = std::chrono::system_clock::now();
             elapsed_seconds = end-start;
             Count = (nx1)*(nx0);
             bandwidth = sizeof(double) * 12 * Count * (1/elapsed_seconds.count()) / giga;
             report << "Residual of equation" << "\t" << elapsed_seconds.count() << "\t" << Count << " \t" << bandwidth << " \n";
             
-        }
-
+        }*/
+      
       // RK new (subloop) update
       // writing dataset rho with(i,j) access
       // writing dataset rhou0 with(i,j) access
@@ -669,7 +713,6 @@ std::chrono::duration<double> elapsed_seconds;
       // reading dataset rhoE_old with (i,j) access
         start = std::chrono::system_clock::now();
 
-      #pragma omp parallel for collapse(2)
       for (int j = 0; j < nx1 + 4; j++) {
         for (int i = 0; i < nx0 + 4; i++) {
           rho[(j + 0) * (nx0 + 4) + (i + 0)] =
@@ -687,14 +730,20 @@ std::chrono::duration<double> elapsed_seconds;
         }
       }
         
-        if(iteration==0 && stage == 0) {
+       /* if(iteration==0 && stage == 0) {
             end = std::chrono::system_clock::now();
             elapsed_seconds = end-start;
             Count = (nx1)*(nx0);
             bandwidth = sizeof(double) * 8 * Count * (1/elapsed_seconds.count()) / giga;
             report << "RK new (subloop) update" << "\t" << elapsed_seconds.count() << "\t" << Count << " \t" << bandwidth << " \n";
             
-        }
+        }*/
+
+      // Flag dirty the 4 arrays which has been written
+      set_dirty(rho);
+      set_dirty(rhou0);
+      set_dirty(rhou1);
+      set_dirty(rhoE);      
 
       // RK old update
       // writing dataset rho_old with(i,j) access
@@ -709,8 +758,8 @@ std::chrono::duration<double> elapsed_seconds;
       // reading dataset rhou1_old with (i,j) access
       // reading dataset wk3 with (i,j) access
       // reading dataset rhoE_old with (i,j) access
-        start = std::chrono::system_clock::now();
-      #pragma omp parallel for collapse(2)
+//        start = std::chrono::system_clock::now();
+
       for (int j = 0; j < nx1 + 4; j++) {
         for (int i = 0; i < nx0 + 4; i++) {
           rho_old[(j + 0) * (nx0 + 4) + (i + 0)] =
@@ -727,14 +776,14 @@ std::chrono::duration<double> elapsed_seconds;
               rhoE_old[(j + 0) * (nx0 + 4) + (i + 0)];
         }
       }
-        if(iteration==0 && stage == 0) {
+      /*  if(iteration==0 && stage == 0) {
             end = std::chrono::system_clock::now();
             elapsed_seconds = end-start;
             Count = (nx1+4)*(nx0+4);
             bandwidth = sizeof(double) * 8 * Count * (1/elapsed_seconds.count()) / giga;
             report << "RK old update" << "\t" << elapsed_seconds.count() << "\t" << Count << " \t" << bandwidth << " \n";
             
-        }
+        }*/
 
       // Apply boundary conditions
 
@@ -747,36 +796,39 @@ std::chrono::duration<double> elapsed_seconds;
       // reading dataset rhou0 with (i+1,j), (i+2,j) access
       // reading dataset rhou1 with (i+1,j), (i+2,j) access
       // reading dataset rhoE with (i+1,j), (i+2,j) access
-        start = std::chrono::system_clock::now();
-      #pragma omp parallel for collapse(2)
-      for (int j = 0; j < nx1 + 4; j++) {
-        for (int i = 2; i < 3; i++) {
-          rho[(j + 0) * (nx0 + 4) + (i - 1)] =
-              rho[(j + 0) * (nx0 + 4) + (i + 1)];
-          rho[(j + 0) * (nx0 + 4) + (i - 2)] =
-              rho[(j + 0) * (nx0 + 4) + (i + 2)];
-          rhou0[(j + 0) * (nx0 + 4) + (i - 1)] =
-              rhou0[(j + 0) * (nx0 + 4) + (i + 1)];
-          rhou0[(j + 0) * (nx0 + 4) + (i - 2)] =
-              rhou0[(j + 0) * (nx0 + 4) + (i + 2)];
-          rhou1[(j + 0) * (nx0 + 4) + (i - 1)] =
-              rhou1[(j + 0) * (nx0 + 4) + (i + 1)];
-          rhou1[(j + 0) * (nx0 + 4) + (i - 2)] =
-              rhou1[(j + 0) * (nx0 + 4) + (i + 2)];
-          rhoE[(j + 0) * (nx0 + 4) + (i - 1)] =
-              rhoE[(j + 0) * (nx0 + 4) + (i + 1)];
-          rhoE[(j + 0) * (nx0 + 4) + (i - 2)] =
-              rhoE[(j + 0) * (nx0 + 4) + (i + 2)];
+      //  start = std::chrono::system_clock::now();
+
+      // this loop should only done by processes who have no previous neighbour in the x direction
+      if (prev_x == MPI_PROC_NULL) {
+        for (int j = 0; j < nx1 + 4; j++) {
+          for (int i = 2; i < 3; i++) {
+            rho[(j + 0) * (nx0 + 4) + (i - 1)] =
+                rho[(j + 0) * (nx0 + 4) + (i + 1)];
+            rho[(j + 0) * (nx0 + 4) + (i - 2)] =
+                rho[(j + 0) * (nx0 + 4) + (i + 2)];
+            rhou0[(j + 0) * (nx0 + 4) + (i - 1)] =
+                rhou0[(j + 0) * (nx0 + 4) + (i + 1)];
+            rhou0[(j + 0) * (nx0 + 4) + (i - 2)] =
+                rhou0[(j + 0) * (nx0 + 4) + (i + 2)];
+            rhou1[(j + 0) * (nx0 + 4) + (i - 1)] =
+                rhou1[(j + 0) * (nx0 + 4) + (i + 1)];
+            rhou1[(j + 0) * (nx0 + 4) + (i - 2)] =
+                rhou1[(j + 0) * (nx0 + 4) + (i + 2)];
+            rhoE[(j + 0) * (nx0 + 4) + (i - 1)] =
+                rhoE[(j + 0) * (nx0 + 4) + (i + 1)];
+            rhoE[(j + 0) * (nx0 + 4) + (i - 2)] =
+                rhoE[(j + 0) * (nx0 + 4) + (i + 2)];
+          }
         }
       }
-        if(iteration==0 && stage == 0) {
+      /*  if(iteration==0 && stage == 0) {
             end = std::chrono::system_clock::now();
             elapsed_seconds = end-start;
             Count = (nx1+4)*(3-2);
             bandwidth = sizeof(double) * 4 * Count * (1/elapsed_seconds.count()) / giga;
             
             report << "ABC2 Left" << "\t" << elapsed_seconds.count() << "\t" << Count << " \t" << bandwidth << " \n";
-        }
+        }*/
 
       // Right
       // writing dataset rho with (i+1,j), (i+2,j) access
@@ -787,36 +839,39 @@ std::chrono::duration<double> elapsed_seconds;
       // reading dataset rhou0 with (i-1,j), (i-2,j) access
       // reading dataset rhou1 with (i-1,j), (i-2,j) access
       // reading dataset rhoE with (i-1,j), (i-2,j) access
-        start = std::chrono::system_clock::now();
-      #pragma omp parallel for collapse(2)
-      for (int j = 0; j < nx1 + 4; j++) {
-        for (int i = nx0 + 1; i < nx0 + 2; i++) {
-          rho[(j + 0) * (nx0 + 4) + (i + 1)] =
-              rho[(j + 0) * (nx0 + 4) + (i - 1)];
-          rho[(j + 0) * (nx0 + 4) + (i + 2)] =
-              rho[(j + 0) * (nx0 + 4) + (i - 2)];
-          rhou0[(j + 0) * (nx0 + 4) + (i + 1)] =
-              rhou0[(j + 0) * (nx0 + 4) + (i - 1)];
-          rhou0[(j + 0) * (nx0 + 4) + (i + 2)] =
-              rhou0[(j + 0) * (nx0 + 4) + (i - 2)];
-          rhou1[(j + 0) * (nx0 + 4) + (i + 1)] =
-              rhou1[(j + 0) * (nx0 + 4) + (i - 1)];
-          rhou1[(j + 0) * (nx0 + 4) + (i + 2)] =
-              rhou1[(j + 0) * (nx0 + 4) + (i - 2)];
-          rhoE[(j + 0) * (nx0 + 4) + (i + 1)] =
-              rhoE[(j + 0) * (nx0 + 4) + (i - 1)];
-          rhoE[(j + 0) * (nx0 + 4) + (i + 2)] =
-              rhoE[(j + 0) * (nx0 + 4) + (i - 2)];
+//        start = std::chrono::system_clock::now();
+
+      // this loop should only done by processes who have no next neighbour in the x direction
+      if (next_x == MPI_PROC_NULL) {
+        for (int j = 0; j < nx1 + 4; j++) {
+          for (int i = nx0 + 1; i < nx0 + 2; i++) {
+            rho[(j + 0) * (nx0 + 4) + (i + 1)] =
+                rho[(j + 0) * (nx0 + 4) + (i - 1)];
+            rho[(j + 0) * (nx0 + 4) + (i + 2)] =
+                rho[(j + 0) * (nx0 + 4) + (i - 2)];
+            rhou0[(j + 0) * (nx0 + 4) + (i + 1)] =
+                rhou0[(j + 0) * (nx0 + 4) + (i - 1)];
+            rhou0[(j + 0) * (nx0 + 4) + (i + 2)] =
+                rhou0[(j + 0) * (nx0 + 4) + (i - 2)];
+            rhou1[(j + 0) * (nx0 + 4) + (i + 1)] =
+                rhou1[(j + 0) * (nx0 + 4) + (i - 1)];
+            rhou1[(j + 0) * (nx0 + 4) + (i + 2)] =
+                rhou1[(j + 0) * (nx0 + 4) + (i - 2)];
+            rhoE[(j + 0) * (nx0 + 4) + (i + 1)] =
+                rhoE[(j + 0) * (nx0 + 4) + (i - 1)];
+            rhoE[(j + 0) * (nx0 + 4) + (i + 2)] =
+                rhoE[(j + 0) * (nx0 + 4) + (i - 2)];
+          }
         }
       }
-        if(iteration==0 && stage == 0) {
+      /*  if(iteration==0 && stage == 0) {
             end = std::chrono::system_clock::now();
             elapsed_seconds = end-start;
             Count = (nx1+4)*(nx0+2-(nx0+1));
             bandwidth = sizeof(double) * 4 * Count * (1/elapsed_seconds.count()) / giga;
             
             report << "ABC2 Right" << "\t" << elapsed_seconds.count() << "\t" << Count << " \t" << bandwidth << " \n";
-        }
+        }*/
 
       // Top
       // writing dataset rho with (i,j-1), (i,j-2) access
@@ -827,36 +882,39 @@ std::chrono::duration<double> elapsed_seconds;
       // reading dataset rhou0 with (i,j+1), (i,j+2) access
       // reading dataset rhou1 with (i,j+1), (i,j+2) access
       // reading dataset rhoE with (i,j+1), (i,j+2) access
-        start = std::chrono::system_clock::now();
-      #pragma omp parallel for collapse(2)
-      for (int j = 2; j < 3; j++) {
-        for (int i = 0; i < nx0 + 4; i++) {
-          rho[(j - 1) * (nx0 + 4) + (i + 0)] =
-              rho[(j + 1) * (nx0 + 4) + (i + 0)];
-          rho[(j - 2) * (nx0 + 4) + (i + 0)] =
-              rho[(j + 2) * (nx0 + 4) + (i + 0)];
-          rhou0[(j - 1) * (nx0 + 4) + (i + 0)] =
-              rhou0[(j + 1) * (nx0 + 4) + (i + 0)];
-          rhou0[(j - 2) * (nx0 + 4) + (i + 0)] =
-              rhou0[(j + 2) * (nx0 + 4) + (i + 0)];
-          rhou1[(j - 1) * (nx0 + 4) + (i + 0)] =
-              rhou1[(j + 1) * (nx0 + 4) + (i + 0)];
-          rhou1[(j - 2) * (nx0 + 4) + (i + 0)] =
-              rhou1[(j + 2) * (nx0 + 4) + (i + 0)];
-          rhoE[(j - 1) * (nx0 + 4) + (i + 0)] =
-              rhoE[(j + 1) * (nx0 + 4) + (i + 0)];
-          rhoE[(j - 2) * (nx0 + 4) + (i + 0)] =
-              rhoE[(j + 2) * (nx0 + 4) + (i + 0)];
+      //  start = std::chrono::system_clock::now();
+      
+      // this loop should only done by processes who have no previous neighbour in the y direction
+      if (prev_y == MPI_PROC_NULL) {
+        for (int j = 2; j < 3; j++) {
+          for (int i = 0; i < nx0 + 4; i++) {
+            rho[(j - 1) * (nx0 + 4) + (i + 0)] =
+                rho[(j + 1) * (nx0 + 4) + (i + 0)];
+            rho[(j - 2) * (nx0 + 4) + (i + 0)] =
+                rho[(j + 2) * (nx0 + 4) + (i + 0)];
+            rhou0[(j - 1) * (nx0 + 4) + (i + 0)] =
+                rhou0[(j + 1) * (nx0 + 4) + (i + 0)];
+            rhou0[(j - 2) * (nx0 + 4) + (i + 0)] =
+                rhou0[(j + 2) * (nx0 + 4) + (i + 0)];
+            rhou1[(j - 1) * (nx0 + 4) + (i + 0)] =
+                rhou1[(j + 1) * (nx0 + 4) + (i + 0)];
+            rhou1[(j - 2) * (nx0 + 4) + (i + 0)] =
+                rhou1[(j + 2) * (nx0 + 4) + (i + 0)];
+            rhoE[(j - 1) * (nx0 + 4) + (i + 0)] =
+                rhoE[(j + 1) * (nx0 + 4) + (i + 0)];
+            rhoE[(j - 2) * (nx0 + 4) + (i + 0)] =
+                rhoE[(j + 2) * (nx0 + 4) + (i + 0)];
+          }
         }
       }
-        if(iteration==0 && stage == 0) {
+      /*  if(iteration==0 && stage == 0) {
             end = std::chrono::system_clock::now();
             elapsed_seconds = end-start;
             Count = (3-2)*(nx0+4);
             bandwidth = sizeof(double) * 4 * Count * (1/elapsed_seconds.count()) / giga;
             
             report << "ABC2 Top" << "\t" << elapsed_seconds.count() << "\t" << Count << " \t" << bandwidth << " \n";
-        }
+        }*/
 
       // Bottom
       // writing dataset rho with (i,j+1), (i,j+2) access
@@ -867,36 +925,40 @@ std::chrono::duration<double> elapsed_seconds;
       // reading dataset rhou0 with (i,j-1), (i,j-2) access
       // reading dataset rhou1 with (i,j-1), (i,j-2) access
       // reading dataset rhoE with (i,j-1), (i,j-2) access
-        start = std::chrono::system_clock::now();
-      #pragma omp parallel for collapse(2)
-      for (int j = nx1 + 1; j < nx1 + 2; j++) {
-        for (int i = 0; i < nx0 + 4; i++) {
-          rho[(j + 1) * (nx0 + 4) + (i + 0)] =
-              rho[(j - 1) * (nx0 + 4) + (i + 0)];
-          rho[(j + 2) * (nx0 + 4) + (i + 0)] =
-              rho[(j - 2) * (nx0 + 4) + (i + 0)];
-          rhou0[(j + 1) * (nx0 + 4) + (i + 0)] =
-              rhou0[(j - 1) * (nx0 + 4) + (i + 0)];
-          rhou0[(j + 2) * (nx0 + 4) + (i + 0)] =
-              rhou0[(j - 2) * (nx0 + 4) + (i + 0)];
-          rhou1[(j + 1) * (nx0 + 4) + (i + 0)] =
-              rhou1[(j - 1) * (nx0 + 4) + (i + 0)];
-          rhou1[(j + 2) * (nx0 + 4) + (i + 0)] =
-              rhou1[(j - 2) * (nx0 + 4) + (i + 0)];
-          rhoE[(j + 1) * (nx0 + 4) + (i + 0)] =
-              rhoE[(j - 1) * (nx0 + 4) + (i + 0)];
-          rhoE[(j + 2) * (nx0 + 4) + (i + 0)] =
-              rhoE[(j - 2) * (nx0 + 4) + (i + 0)];
+      //  start = std::chrono::system_clock::now();
+
+      // this loop should only done by processes who have no next neighbour in the y direction       
+      if (next_y == MPI_PROC_NULL) {
+        for (int j = nx1 + 1; j < nx1 + 2; j++) {
+          for (int i = 0; i < nx0 + 4; i++) {
+            rho[(j + 1) * (nx0 + 4) + (i + 0)] =
+                rho[(j - 1) * (nx0 + 4) + (i + 0)];
+            rho[(j + 2) * (nx0 + 4) + (i + 0)] =
+                rho[(j - 2) * (nx0 + 4) + (i + 0)];
+            rhou0[(j + 1) * (nx0 + 4) + (i + 0)] =
+                rhou0[(j - 1) * (nx0 + 4) + (i + 0)];
+            rhou0[(j + 2) * (nx0 + 4) + (i + 0)] =
+                rhou0[(j - 2) * (nx0 + 4) + (i + 0)];
+            rhou1[(j + 1) * (nx0 + 4) + (i + 0)] =
+                rhou1[(j - 1) * (nx0 + 4) + (i + 0)];
+            rhou1[(j + 2) * (nx0 + 4) + (i + 0)] =
+                rhou1[(j - 2) * (nx0 + 4) + (i + 0)];
+            rhoE[(j + 1) * (nx0 + 4) + (i + 0)] =
+                rhoE[(j - 1) * (nx0 + 4) + (i + 0)];
+            rhoE[(j + 2) * (nx0 + 4) + (i + 0)] =
+                rhoE[(j - 2) * (nx0 + 4) + (i + 0)];
+          }
         }
       }
-        if(iteration==0 && stage == 0) {
+      /*  if(iteration==0 && stage == 0) {
             end = std::chrono::system_clock::now();
             elapsed_seconds = end-start;
             Count = (nx1+2-(nx1+1))*(nx0+4);
             bandwidth = sizeof(double) * 4 * Count * (1/elapsed_seconds.count()) / giga;
             
             report << "ABC2 Bottom" << "\t" << elapsed_seconds.count() << "\t" << Count << " \t" << bandwidth << " \n";
-        }
+        }*/
+
     } // End of stage loop
 
     double sum = 0.0;
@@ -904,21 +966,26 @@ std::chrono::duration<double> elapsed_seconds;
 
     // reading dataset rho with (i,j) access
     // reading dataset p with (i,j) access
-      start = std::chrono::system_clock::now();
-    #pragma omp parallel for collapse(2)
+    //  start = std::chrono::system_clock::now();
+    double glb_sum;
+    double glb_sum2;
     for (int j = 0; j < nx1 + 4; j++) {
       for (int i = 0; i < nx0 + 4; i++) {
         sum += rho[j * (nx0 + 4) + i] * rho[j * (nx0 + 4) + i];
         sum2 += p[j * (nx0 + 4) + i] * p[j * (nx0 + 4) + i];
       }
     }
-      if(iteration==0) {
+    MPI_Allreduce(&sum, &glb_sum, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
+        sum = glb_sum;
+    MPI_Allreduce(&sum2, &glb_sum2, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
+        sum2 = glb_sum2;
+    /*  if(iteration==0) {
           end = std::chrono::system_clock::now();
           elapsed_seconds = end-start;
           Count = (nx1+4)*(nx0+4);
           bandwidth = sizeof(double) * 2 * Count * (1/elapsed_seconds.count()) / giga;
           std::cout << "Sum" << "\t" << elapsed_seconds.count() << "\t" << Count << " \t" << bandwidth << " \n";
-      }
+      }*/
       std::cout << "Checksums: " << sqrt(sum) << " " << sqrt(sum2) << "\n";
 
   } // End of time loop
@@ -928,7 +995,7 @@ std::chrono::duration<double> elapsed_seconds;
   std::chrono::duration<double> diff = endMain - startMain;
   std::cout << "\nTimings are:\n";
   std::cout << "-----------------------------------------\n";
-  std::cout << report.str() << "\n";
+  //std::cout << report.str() << "\n";
   // TODO: per-loop statistics come here
   std::cout << "Total Wall time " << diff.count() << " seconds\n";
 
@@ -948,4 +1015,7 @@ std::chrono::duration<double> elapsed_seconds;
   delete[] wk1;
   delete[] wk2;
   delete[] wk3;
+  
+  MPI_Finalize();
+  return 0;
 }

@@ -24,16 +24,16 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-CC       = mpicc
-OMPFLAGS = -Ofast -fopenmp -mavx -ftree-vectorizer-verbose=1 -fopt-info-vec -lm -std=c99
+CC       = mpicxx
+OMPFLAGS = -Ofast -fopenmp -mavx -ftree-vectorizer-verbose=1 -fopt-info-vec -lm -std=c++14
 #OMPFLAGS = -O0 -g -fopenmp -lm -std=c99
 
-BIN =  laplace2d_mpi
+BIN =  fluid
 
 all: $(BIN)
 
-laplace2d_mpi: laplace2d.c mpi_navier.c Makefile
-	$(CC) $(CCFLAGS) $(OMPFLAGS) -o $@ laplace2d.c mpi_navier.c
+fluid: fluid.cpp mpi_navier.c Makefile
+	$(CC) $(CCFLAGS) $(OMPFLAGS) -o $@ fluid.cpp mpi_navier.c
 
 clean:
 	$(RM) $(BIN)

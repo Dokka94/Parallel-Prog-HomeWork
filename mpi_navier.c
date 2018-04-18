@@ -20,8 +20,8 @@ int jmax_full;
 int gbl_i_begin;
 int gbl_j_begin;
 
-double* dat_ptrs[6];
-int dat_dirty[6] = {1,1,1,1,1,1};
+double* dat_ptrs[8];
+int dat_dirty[8] = {1,1,1,1,1,1,1,1};
 
 void mpi_setup(int argc, char **argv, int *imax, int *jmax) {
 	//Initialise: get #of processes and process id
@@ -42,7 +42,7 @@ void mpi_setup(int argc, char **argv, int *imax, int *jmax) {
   
   my_rank_x = my_rank % nprocs_x;
   my_rank_y = my_rank / nprocs_x;
-//my_rank = my_rank_y*nprocs_x+my_rank_x;
+  my_rank = my_rank_y*nprocs_x+my_rank_x;
 
 	//Figure out neighbours
   prev_x = (my_rank_x-1)<0 ? MPI_PROC_NULL : my_rank-1;
@@ -65,8 +65,8 @@ void mpi_setup(int argc, char **argv, int *imax, int *jmax) {
 
 	//Let's set up MPI Datatypes
   //Homework: ghost cells are not 1 on each side, but 2! Change these to send 2 rows/columns at the same time
-  MPI_Type_vector((*jmax)+2,2,(*imax)+2, MPI_DOUBLE, &vertSlice);
-  MPI_Type_vector((*imax)+2,2,1, MPI_DOUBLE, &horizSlice);
+  MPI_Type_vector((*jmax)+4,2,(*imax)+4, MPI_DOUBLE, &vertSlice);
+  MPI_Type_vector((2*(*imax))+4,1,1, MPI_DOUBLE, &horizSlice);
   MPI_Type_commit(&vertSlice);
   MPI_Type_commit(&horizSlice); 
 	
@@ -74,7 +74,7 @@ void mpi_setup(int argc, char **argv, int *imax, int *jmax) {
 
 void exchange_halo(int imax, int jmax, double *arr) {
 	int dirty = -1;
-	for (int i = 0; i < 6; i++) {
+	for (int i = 0; i < 8; i++) {
 		if ((double*)arr == dat_ptrs[i]) {
 			if (dat_dirty[i]) dirty = i;
 			break;
@@ -92,12 +92,12 @@ void exchange_halo(int imax, int jmax, double *arr) {
                  &arr[0*(imax+4)+imax+2],1,vertSlice,next_x,0,
            MPI_COMM_WORLD,MPI_STATUS_IGNORE);
 
-    MPI_Sendrecv(&arr[(jmax-1)*(imax+4)+0] ,1,horizSlice,next_y,0,
+    MPI_Sendrecv(&arr[(jmax)*(imax+4)+0] ,1,horizSlice,next_y,0,
                  &arr[0*(imax+4)+0]        ,1,horizSlice,prev_y,0,
            MPI_COMM_WORLD,MPI_STATUS_IGNORE);
 
-    MPI_Sendrecv(&arr[1*(imax+4)+0] ,1,horizSlice,prev_y,0,
-                 &arr[(jmax)*(imax+4)+0],1,horizSlice,next_y,0,
+    MPI_Sendrecv(&arr[2*(imax+4)+0] ,1,horizSlice,prev_y,0,
+                 &arr[(jmax+2)*(imax+4)+0],1,horizSlice,next_y,0,
            MPI_COMM_WORLD,MPI_STATUS_IGNORE);
 
 		dat_dirty[dirty] = 0;
@@ -105,7 +105,7 @@ void exchange_halo(int imax, int jmax, double *arr) {
 }
 
 void set_dirty(double *arr) {
-	for (int i = 0; i < 6; i++) {
+	for (int i = 0; i < 8; i++) {
 		if ((double*)arr == dat_ptrs[i]) {
 			dat_dirty[i] = 1;
 			break;
