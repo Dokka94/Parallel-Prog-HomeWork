@@ -24,16 +24,15 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-CC       = mpicxx
-OMPFLAGS = -Ofast -fopenmp -mavx -ftree-vectorizer-verbose=1 -fopt-info-vec -lm -std=c++14
-#OMPFLAGS = -O0 -g -fopenmp -lm -std=c99
+CC       = pgc++
+CFLAGS = -fast -acc -ta=tesla -Minfo=accel -std=c++14
 
-BIN =  fluid
+BIN = fluid
 
 all: $(BIN)
 
-fluid: fluid.cpp mpi_navier.c Makefile
-	$(CC) $(CCFLAGS) $(OMPFLAGS) -o $@ fluid.cpp mpi_navier.c
+fluid: fluid.cpp Makefile
+	$(CC) $(CFLAGS) -o $@ fluid.cpp 
 
 clean:
 	$(RM) $(BIN)
