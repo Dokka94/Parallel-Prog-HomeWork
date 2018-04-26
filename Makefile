@@ -31,7 +31,7 @@ BIN = fluid
 
 all: $(BIN)
 
-fluid: fluid.cpp Makefile
+fluid: new_fluid.cpp Makefile
 	$(CC) $(CFLAGS) -o $@ fluid.cpp 
 
 clean:
